@@ -29,7 +29,7 @@ Due to execution overlap between the CPU and GPU, on large datasets where billio
 ```
 
 ```
-./set_sim_join --alogirthm allpairs --threshold 0.9 --input ~/datasets/dblp.txt --devmemory 1G --scenario 3
+./set_sim_join --algorithm allpairs --threshold 0.9 --input ~/datasets/dblp.txt --devmemory 1G --scenario 3
 ```
 
 The datasets and the preprocess scripts can be found at http://ssjoin.dbresearch.uni-salzburg.at/datasets.html
