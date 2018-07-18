@@ -5,7 +5,7 @@ Set Similarity joins in the GPGPU paradigm
 This work is based on the filter-verifcation framework developed by Mann (http://ssjoin.dbresearch.uni-salzburg.at/).
 
 We employ the GPGPU paradigm in order to accelerate exact set similarity join. The CPU is responsible for the candidate generation (filtering phase) while verification is delegated to the GPU.
-Due to execution overlap between the CPU and GPU, on large datasets where billions of candiate pairs are verified, there is a 2.6x speedup over the sequential implementation.
+Due to execution overlap between the CPU and GPU, on large datasets where billions of candidate pairs are verified, there is a 2.6x speedup over the sequential implementation.
 
 ## Dependencies
 
