@@ -132,8 +132,8 @@ void GPUHandler::invokeGPU(unsigned int numOfRecords)
     stop_event.record(cuda::stream::default_stream_id); // record in stream-0, to ensure that all previous CUDA calls have completed
     stop_event.synchronize();
 
-    auto kernel_time = cuda::event::milliseconds_elapsed_between(start_event, stop_event);
-    gpuTime += kernel_time;
+    auto kernel_time = cuda::event::time_elapsed_between(start_event, stop_event);
+    gpuTime += kernel_time.count();
 
     if (_aggregate) {
         _result += thrust::reduce(thrust::device, _deviceCounts.getResult(), _deviceCounts.getResult() + _deviceCounts.getLength());

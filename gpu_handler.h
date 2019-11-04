@@ -40,7 +40,7 @@ public:
     struct LaunchParameters {
         unsigned int blocks = 0;
         unsigned int threads = 0;
-        cuda::shared_memory_size_t sharedMemory = 0;
+        cuda::memory::shared::size_t sharedMemory = 0;
 
         LaunchParameters(unsigned int scenario, bool count, unsigned int threads,
                          unsigned int numberOfRecords , unsigned int maxSetSize) : threads(threads){

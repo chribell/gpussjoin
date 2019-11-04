@@ -3,7 +3,7 @@
 
 #pragma once
 #include <numeric>
-#include <cuda/api_wrappers.h>
+#include <cuda/api_wrappers.hpp>
 
 #include "gputimer.hxx"
 
@@ -95,15 +95,15 @@ private:
 public:
     DeviceArray(){}
     inline void init(int deviceID, HostArray<T>& hostArray) {
-        _array   =  (T*) cuda::device::get(deviceID).memory.allocate(hostArray.getArraySize() * sizeof(T));
-        _offsets =  (unsigned int*) cuda::device::get(deviceID).memory.allocate(hostArray.getOffsetsSize() * sizeof(unsigned int));
+        _array   =  (T*) cuda::device::get(deviceID).memory().allocate(hostArray.getArraySize() * sizeof(T));
+        _offsets =  (unsigned int*) cuda::device::get(deviceID).memory().allocate(hostArray.getOffsetsSize() * sizeof(unsigned int));
         cuda::memory::copy(_array, &hostArray.getArray()[0], hostArray.getArraySize() * sizeof(T));
         cuda::memory::copy(_offsets, &hostArray.getOffsets()[0], hostArray.getOffsetsSize() * sizeof(unsigned int));
     }
 
     inline void init(int deviceID, HostVector<T>& hostVector) {
-        _array   =  (T*) cuda::device::get(deviceID).memory.allocate(hostVector.getVector().size() * sizeof(T));
-        _offsets =  (unsigned int*) cuda::device::get(deviceID).memory.allocate(hostVector.getOffsets().size() * sizeof(unsigned int));
+        _array   =  (T*) cuda::device::get(deviceID).memory().allocate(hostVector.getVector().size() * sizeof(T));
+        _offsets =  (unsigned int*) cuda::device::get(deviceID).memory().allocate(hostVector.getOffsets().size() * sizeof(unsigned int));
         cuda::memory::copy(_array, &hostVector.getVector()[0], hostVector.getVector().size() * sizeof(T));
         cuda::memory::copy(_offsets, &hostVector.getOffsets()[0], hostVector.getOffsets().size() * sizeof(unsigned int));
     }
@@ -129,7 +129,7 @@ public:
 
     inline void init(int deviceID, unsigned int length) {
         _length = length;
-        _result = (T*) cuda::device::get(deviceID).memory.allocate(_length  * sizeof(T));
+        _result = (T*) cuda::device::get(deviceID).memory().allocate(_length  * sizeof(T));
         cuda::memory::device::set(_result, 0, _length  * sizeof(T));
     }
 

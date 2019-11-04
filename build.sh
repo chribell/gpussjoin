@@ -6,7 +6,7 @@ function build() {
     mkdir $1
     cd $1
     #-DCMAKE_RULE_MESSAGES:BOOL=OFF -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
-    CC=gcc-5 CXX=g++-5 cmake -DCMAKE_BUILD_TYPE=$1 CMAKE_CXX_FLAGS=-m64 -DSM_ARCH=$2 ..
+    CC=gcc-8 CXX=g++-8 cmake -DCMAKE_BUILD_TYPE=$1 CMAKE_CXX_FLAGS=-m64 -DSM_ARCH=$2 ..
     make -j 4
 }
 
