@@ -11,13 +11,16 @@ include_directories( ${CMAKE_CURRENT_BINARY_DIR} )
 #cuda requirements
 include_directories(/opt/cuda/include)
 
+include_directories( ${CMAKE_CURRENT_SOURCE_DIR} )
+
+
 set(setsimjoinfiles main.cxx input.cxx statistics.cxx timing.cxx
 		cmdline_allpairs.cxx
 		cmdline_groupjoin.cxx
 		cmdline_groupjoin_jaccard.cxx
 		cmdline_mpjoin.cxx
 		cmdline_mpjoin_jaccard.cxx
-		)
+		definitions.h)
 
 add_executable(set_sim_join ${setsimjoinfiles})
 set_property(TARGET set_sim_join PROPERTY CXX_STANDARD 11)
@@ -27,8 +30,8 @@ target_link_libraries( set_sim_join ${Boost_LIBRARIES}  )
 
 add_library(gpujoin STATIC
 		gpu_handler.cu
-		gpujoin/gputimer.cu
-        gpujoin/scenarios.cu
+        gpujoin/device_timing.cu
+		gpujoin/scenarios.cu
 )
 
 set_property(TARGET gpujoin PROPERTY CUDA_STANDARD 11)

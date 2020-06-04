@@ -1,10 +1,8 @@
 #include "scenarios.hxx"
-#include "functions.hxx"
 
-template<bool aggregate, class Token, class Candidate, class Result>
-__global__ void scenarioA(Token* tokens, unsigned int* tokenOffsets,
-                           Candidate* candidates, unsigned int* candidateOffsets,
-                           Result* results, unsigned int maxSetSize, double threshold)
+__global__ void scenarioA(DeviceCollection indexedCollection, DeviceCollection probeCollection,
+                          DeviceCandidates<unsigned int> candidates, DeviceArray<unsigned int> results,
+                          double threshold, bool aggregate)
 {
     extern __shared__ unsigned int counts[];
 
@@ -17,39 +15,42 @@ __global__ void scenarioA(Token* tokens, unsigned int* tokenOffsets,
     unsigned int candidatesStart = 0;
     unsigned int candidatesEnd = 0;
 
-    // candidateOffsets[blockID * 2] gives us the probe set id
-    unsigned int probeSetID = candidateOffsets[globalID * 2];
+    // candidateOffsets[globalID * 2] gives us the probe set id
+    unsigned int probeSetID = candidates.offsets[globalID * 2];
 
-    // first record should be handle differenlty
-    recordStart = probeSetID > 0 ? tokenOffsets[probeSetID - 1] : 0;
-    recordEnd = tokenOffsets[probeSetID];
+    recordStart = probeCollection.starts[probeSetID];
+    recordEnd = recordStart + probeCollection.sizes[probeSetID];
 
     // candidateOffsets[(blockID * 2) + 1]
-    candidatesStart = globalID > 0 ? candidateOffsets[(globalID * 2) - 1] : 0;
+    candidatesStart = globalID > 0 ? candidates.offsets[(globalID * 2) - 1] : 0;
 
     // candidateOffsets[(blockID * 2) + 1] gives us the current's probe set candidates offset
-    candidatesEnd = candidateOffsets[(globalID * 2) + 1];
+    candidatesEnd = candidates.offsets[(globalID * 2) + 1];
 
     if (candidatesEnd - candidatesStart <= 0) return; // has no candidates
 
     unsigned int recordLength = recordEnd - recordStart;
     unsigned int counter = 0;
     for (unsigned int offset = candidatesStart; offset < candidatesEnd; ++offset) {
-        unsigned int candidate = candidates[offset];
+        unsigned int candidate = candidates.candidates[offset];
 
-        unsigned int candidateRecordStart = candidate > 0 ? tokenOffsets[candidate - 1] : 0;
-        unsigned int candidateRecordEnd = tokenOffsets[candidate];
+        unsigned int candidateRecordStart = indexedCollection.starts[candidate];
+        unsigned int candidateRecordEnd = indexedCollection.starts[candidate] + indexedCollection.sizes[candidate];
 
         unsigned int candidateLength = candidateRecordEnd - candidateRecordStart;
 
         double withoutCeil = (recordLength + candidateLength) * threshold / (1 + threshold);
         unsigned int jaccardEqovelarp = myMin(candidateLength, myMin(recordLength, (unsigned int)(ceil(withoutCeil))));
 
-        if ( intersection(tokens, recordStart, recordEnd, candidateRecordStart, candidateRecordEnd)  >= jaccardEqovelarp ) {
+        if ( intersection(
+                probeCollection.tokens.array,
+                indexedCollection.tokens.array,
+                recordStart, recordEnd,
+                candidateRecordStart, candidateRecordEnd)  >= jaccardEqovelarp ) {
             if (aggregate) {
                 counter++;
             } else {
-                results[offset] = true;
+                results[offset] = 1;
             }
         }
     }
@@ -62,10 +63,9 @@ __global__ void scenarioA(Token* tokens, unsigned int* tokenOffsets,
     }
 }
 
-template<bool aggregate, class Token, class Candidate, class Result>
-__global__ void scenarioB(Token* tokens, unsigned int* tokenOffsets,
-                           Candidate* candidates, unsigned int* candidateOffsets,
-                           Result* results, unsigned int maxSetSize, double threshold)
+__global__ void scenarioB(DeviceCollection indexedCollection, DeviceCollection probeCollection,
+                          DeviceCandidates<unsigned int> candidates, DeviceArray<unsigned int> results,
+                          double threshold, unsigned int maxSetSize, bool aggregate)
 {
     extern __shared__ unsigned int shared[];
     unsigned int* querySet = shared;
@@ -79,24 +79,23 @@ __global__ void scenarioB(Token* tokens, unsigned int* tokenOffsets,
     unsigned int candidatesStart = 0;
     unsigned int candidatesEnd = 0;
 
-    // candidateOffsets[blockID * 2] gives us the probe set id
-    unsigned int probeSetID = candidateOffsets[blockID * 2];
+    // candidateOffsets[globalID * 2] gives us the probe set id
+    unsigned int probeSetID = candidates.offsets[blockID * 2];
 
-    // first record should be handle differenlty
-    recordStart = probeSetID > 0 ? tokenOffsets[probeSetID - 1] : 0;
-    recordEnd = tokenOffsets[probeSetID];
+    recordStart = probeCollection.starts[probeSetID];
+    recordEnd = recordStart + probeCollection.sizes[probeSetID];
 
     // candidateOffsets[(blockID * 2) + 1]
-    candidatesStart = blockID > 0 ? candidateOffsets[(blockID * 2) - 1] : 0;
+    candidatesStart = blockID > 0 ? candidates.offsets[(blockID * 2) - 1] : 0;
 
     // candidateOffsets[(blockID * 2) + 1] gives us the current's probe set candidates offset
-    candidatesEnd = candidateOffsets[(blockID * 2) + 1];
+    candidatesEnd = candidates.offsets[(blockID * 2) + 1];
 
     if (candidatesEnd - candidatesStart <= 0) return; // has no candidates
 
     // load query set to shared memory
     for(int i = threadIdx.x; i  < maxSetSize && i < recordEnd - recordStart; i += blockDim.x) {
-        querySet[i] = tokens[recordStart + i];
+        querySet[i] = probeCollection.tokens[recordStart + i];
     }
     __syncthreads();
 
@@ -104,24 +103,26 @@ __global__ void scenarioB(Token* tokens, unsigned int* tokenOffsets,
 
     unsigned int counter = 0;
     for (unsigned int offset = candidatesStart + threadIdx.x; offset < candidatesEnd; offset += blockDim.x) {
-        unsigned int candidate = candidates[offset];
+        unsigned int candidate = candidates.candidates[offset];
 
-        unsigned int candidateRecordStart = candidate > 0 ? tokenOffsets[candidate - 1] : 0;
-        unsigned int candidateRecordEnd = tokenOffsets[candidate];
-
+        unsigned int candidateRecordStart = indexedCollection.starts[candidate];
+        unsigned int candidateRecordEnd = indexedCollection.starts[candidate] + indexedCollection.sizes[candidate];
 
         unsigned int candidateLength = candidateRecordEnd - candidateRecordStart;
 
         double withoutCeil = (recordLength + candidateLength) * threshold / (1 + threshold);
         unsigned int jaccardEqovelarp = myMin(candidateLength, myMin(recordLength, (unsigned int)(ceil(withoutCeil))));
 
-        if ( intersection_shared(tokens, querySet, recordStart, recordEnd, candidateRecordStart, candidateRecordEnd)  >= jaccardEqovelarp ) {
+        if ( intersection(
+                querySet,
+                indexedCollection.tokens.array,
+                0, recordLength,
+                candidateRecordStart, candidateRecordEnd)  >= jaccardEqovelarp ) {
             if (aggregate) {
                 counter++;
             } else {
-                results[offset] = true;
+                results[offset] = 1;
             }
-
         }
     }
     if (aggregate) {
@@ -133,10 +134,9 @@ __global__ void scenarioB(Token* tokens, unsigned int* tokenOffsets,
     }
 }
 
-template<bool aggregate, class Token, class Candidate, class Result>
-__global__ void scenarioC(Token* tokens, unsigned int* tokenOffsets,
-                           Candidate* candidates, unsigned int* candidateOffsets,
-                           Result* results, unsigned int maxSetSize, double threshold)
+__global__ void scenarioC(DeviceCollection indexedCollection, DeviceCollection probeCollection,
+                          DeviceCandidates<unsigned int> candidates, DeviceArray<unsigned int> results,
+                          double threshold, unsigned int maxSetSize, bool aggregate)
 {
     extern __shared__ unsigned int shared[];
     unsigned int* querySet = shared;
@@ -152,23 +152,23 @@ __global__ void scenarioC(Token* tokens, unsigned int* tokenOffsets,
     unsigned int candidatesEnd = 0;
 
     // candidateOffsets[blockID * 2] gives us the probe set id
-    unsigned int probeSetID = candidateOffsets[blockID * 2];
+    unsigned int probeSetID = candidates.offsets[blockID * 2];
 
-    // first record should be handle differenlty
-    recordStart = probeSetID > 0 ? tokenOffsets[probeSetID - 1] : 0;
-    recordEnd = tokenOffsets[probeSetID];
+    // first record should be handle differently
+    recordStart = probeCollection.starts[probeSetID];
+    recordEnd = recordStart + probeCollection.sizes[probeSetID];
 
     // candidateOffsets[(blockID * 2) + 1]
-    candidatesStart = blockID > 0 ? candidateOffsets[(blockID * 2) - 1] : 0;
+    candidatesStart = blockID > 0 ? candidates.offsets[(blockID * 2) - 1] : 0;
 
     // candidateOffsets[(blockID * 2) + 1] gives us the current's probe set candidates offset
-    candidatesEnd = candidateOffsets[(blockID * 2) + 1];
+    candidatesEnd = candidates.offsets[(blockID * 2) + 1];
 
     if (candidatesEnd - candidatesStart <= 0) return; // has no candidates
 
     // load query set to shared memory
     for(int i = threadIdx.x; i  < maxSetSize && i < recordEnd - recordStart; i += blockDim.x) {
-        querySet[i] = tokens[recordStart + i];
+        querySet[i] = probeCollection.tokens[recordStart + i];
     }
 
     __syncthreads();
@@ -177,17 +177,17 @@ __global__ void scenarioC(Token* tokens, unsigned int* tokenOffsets,
 
     unsigned int counter = 0;
     for (unsigned int offset = candidatesStart; offset < candidatesEnd; ++offset) {
-        unsigned int candidate = candidates[offset];
+        unsigned int candidate = candidates.candidates[offset];
 
-        unsigned int candidateRecordStart = candidate > 0 ? tokenOffsets[candidate - 1] : 0;
-        unsigned int candidateRecordEnd = tokenOffsets[candidate];
+        unsigned int candidateRecordStart = indexedCollection.starts[candidate];
+        unsigned int candidateRecordEnd = indexedCollection.starts[candidate] + indexedCollection.sizes[candidate];
 
         unsigned int candidateLength = candidateRecordEnd - candidateRecordStart;
         unsigned int vt = ((recordLength + candidateLength + 1) / blockDim.x) + 1;
 
 
         for(int i = threadIdx.x; i  < maxSetSize && i < candidateLength; i += blockDim.x) {
-            candidateSet[i] = tokens[candidateRecordStart + i];
+            candidateSet[i] = indexedCollection.tokens[candidateRecordStart + i];
         }
 
         __syncthreads();
@@ -226,17 +226,6 @@ __global__ void scenarioC(Token* tokens, unsigned int* tokenOffsets,
 
     }
     if (aggregate && threadIdx.x == 0) {
-         results[blockIdx.x] = counter;
+        results[blockIdx.x] = counter;
     }
 }
-
-
-// aggregate scenarios
-template __global__ void scenarioA<true, unsigned int, unsigned int, unsigned int>(unsigned int*, unsigned int*, unsigned int*, unsigned int*, unsigned int*, unsigned int, double);
-template __global__ void scenarioB<true, unsigned int, unsigned int, unsigned int>(unsigned int*, unsigned int*, unsigned int*, unsigned int*, unsigned int*, unsigned int, double);
-template __global__ void scenarioC<true, unsigned int, unsigned int, unsigned int>(unsigned int*, unsigned int*, unsigned int*, unsigned int*, unsigned int*, unsigned int, double);
-
-// general join scenarios
-template __global__ void scenarioA<false, unsigned int, unsigned int, bool>(unsigned int*, unsigned int*, unsigned int*, unsigned int*, bool*, unsigned int, double);
-template __global__ void scenarioB<false, unsigned int, unsigned int, bool>(unsigned int*, unsigned int*, unsigned int*, unsigned int*, bool*, unsigned int, double);
-template __global__ void scenarioC<false, unsigned int, unsigned int, bool>(unsigned int*, unsigned int*, unsigned int*, unsigned int*, bool*, unsigned int, double);

@@ -169,16 +169,17 @@ void AllPairs<AllPairsSimilarity,AllPairsIndexingStrategyPolicy, AllPairsLengthF
     _gpuHandler = gpuHandler;
 	index.largest_tokenid(inputhandler.get_largest_tokenid());
 	index.index_records(indexedrecords, threshold);
-	_gpuHandler->reserveCandidateSpace(indexedrecords.size());
-	unsigned int globalOffset = 0;
-	for(IndexedRecord rec : indexedrecords) {
-		for (unsigned int token : rec.tokens) {
-            _gpuHandler->insertToken(token);
-		}
-		globalOffset += rec.tokens.size();
-        _gpuHandler->insertTokenOffset(globalOffset);
+	for (auto& rec : indexedrecords) {
+        _gpuHandler->addIndexedRecord(rec.tokens);
 	}
-    _gpuHandler->transferTokensToDevice();
+    _gpuHandler->transferInputCollection();
+	if (!Index::SELF_JOIN) {
+        for (auto& rec : foreignrecords) {
+            _gpuHandler->addForeignRecord(rec.tokens);
+        }
+        _gpuHandler->transferForeignInputCollection();
+	}
+    _gpuHandler->reserveCandidateSpace(Index::SELF_JOIN ? indexedrecords.size() : foreignrecords.size());
 }
 
 template <typename AllPairsSimilarity, class AllPairsIndexingStrategyPolicy, class AllPairsLengthFilterPolicy>
@@ -287,8 +288,7 @@ void AllPairs<AllPairsSimilarity, AllPairsIndexingStrategyPolicy, AllPairsLength
     _gpuHandler->flush();
 
     result = _gpuHandler->getResult();
-    //std::cout << "Map serialize duration: " << _gpuHandler->getMapSerializeDuration() << std::endl;
-    _gpuHandler->freeTokensFromDevice();
+    _gpuHandler->free();
 }
 
 template <typename MpJoinSimilarity, class MpJoinIndexingStrategyPolicy, class MpJoinLengthFilterPolicy>

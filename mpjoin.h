@@ -197,18 +197,17 @@ void MpJoin<MpJoinSimilarity, MpJoinIndexStructurePolicy, MpJoinIndexingStrategy
 
 	// Create bitmaps for indexed records
 	postprefixfilter.create_for_indexed_records(indexedrecords);
-	_gpuHandler->reserveCandidateSpace(indexedrecords.size());
-
-	unsigned int globalOffset = 0;
-	for(IndexedRecord rec : indexedrecords) {
-		for (unsigned int token : rec.tokens) {
-			_gpuHandler->insertToken(token);
-		}
-		globalOffset += rec.tokens.size();
-		_gpuHandler->insertTokenOffset(globalOffset);
-	}
-	_gpuHandler->transferTokensToDevice();
-
+    for (auto& rec : indexedrecords) {
+        _gpuHandler->addIndexedRecord(rec.tokens);
+    }
+    _gpuHandler->transferInputCollection();
+    if (!Index::SELF_JOIN) {
+        for (auto& rec : foreignrecords) {
+            _gpuHandler->addForeignRecord(rec.tokens);
+        }
+        _gpuHandler->transferForeignInputCollection();
+    }
+    _gpuHandler->reserveCandidateSpace(Index::SELF_JOIN ? indexedrecords.size() : foreignrecords.size());
 }
 
 template <typename MpJoinSimilarity, typename MpJoinIndexStructurePolicy, class MpJoinIndexingStrategyPolicy, class MpJoinLengthFilterPolicy, typename MpJoinBitfilterPolicy>
@@ -376,7 +375,7 @@ void MpJoin<MpJoinSimilarity, MpJoinIndexStructurePolicy, MpJoinIndexingStrategy
 	_gpuHandler->flush();
 
 	result = _gpuHandler->getResult();
-	_gpuHandler->freeTokensFromDevice();
+	_gpuHandler->free();
 }
 
 template <typename MpJoinSimilarity, typename MpJoinIndexStructurePolicy, class MpJoinIndexingStrategyPolicy, class MpJoinLengthFilterPolicy, typename MpJoinBitfilterPolicy>

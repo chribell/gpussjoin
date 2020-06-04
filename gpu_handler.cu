@@ -1,60 +1,106 @@
 #include "gpu_handler.h"
-#include "gpujoin/classes.hxx"
 #include "gpujoin/scenarios.hxx"
-#include <iostream>
 #include <ostream>
-#include <fstream>
 
 
 #include <thrust/reduce.h>
 #include <thrust/device_vector.h>
-#include <thrust/system/cuda/execution_policy.h>
-#include <thrust/device_ptr.h>
-#include <thrust/for_each.h>
+
 
 /**
- * Transfer dataset tokens to device
+ * Create kernel launch parameters
  */
-void GPUHandler::transferTokensToDevice() {
-//    GPUTimer::EventPair* tokensTransfer = _gpuTimer.add("allocate_transfer_tokens", nullptr);
-    _deviceTokens.init(_deviceID, _hostTokens);
-//    _gpuTimer.finish(tokensTransfer);
+void GPUHandler::makeLaunchParameters()
+{
+    if (_scenario == 1) {
+        _blocks = (_numberOfRecords + _threads - 1) / _threads;
+        _sharedMemory = _aggregate ? _threads * sizeof(unsigned int) : 0;
+    } else if (_scenario == 2) {
+        _blocks = _numberOfRecords;
+        _sharedMemory = _maxSetSize * sizeof(unsigned int) + (_aggregate ? _threads * sizeof(unsigned int) : 0);
+    } else {
+        _blocks = _numberOfRecords;
+        _sharedMemory = 2 * _maxSetSize * sizeof(unsigned int) + _threads * sizeof(unsigned int);
+    }
 }
 
 /**
- * Free device memory used for tokens
+ * Transfer input collection to device
  */
-void GPUHandler::freeTokensFromDevice() {
-//    GPUTimer::EventPair* freeTokens = _gpuTimer.add("free_tokens", nullptr);
-    _deviceTokens.free();
-//    _gpuTimer.finish(freeTokens);
+void GPUHandler::transferInputCollection() {
+    DeviceTiming::EventPair* inputTransfer = _deviceTimings.add( "Transfer input collection to device (allocate + copy)", 0);
+    _deviceInputCollection.init(_hostInputCollection);
+    _deviceTimings.finish(inputTransfer);
+}
+
+/**
+ * Free device memory used for input collection
+ */
+void GPUHandler::freeInputCollection() {
+    DeviceTiming::EventPair* inputFree = _deviceTimings.add("Free input collection from device memory", 0);
+    _deviceInputCollection.free();
+    _deviceTimings.finish(inputFree);
+}
+
+/**
+ * Transfer foreign input collection to device
+ */
+void GPUHandler::transferForeignInputCollection() {
+    _binaryJoin = true;
+    DeviceTiming::EventPair* foreignTransfer = _deviceTimings.add( "Transfer foreign input collection to device (allocate + copy)", 0);
+    _deviceForeignCollection.init(_hostForeignInputCollection);
+    _deviceTimings.finish(foreignTransfer);
+}
+
+/**
+ * Free device memory used for foreign input collection
+ */
+void GPUHandler::freeForeignInputCollection() {
+    DeviceTiming::EventPair* inputFree = _deviceTimings.add("Free foreign input collection from device memory", 0);
+    _deviceForeignCollection.free();
+    _deviceTimings.finish(inputFree);
 }
 
 /**
  * Transfer candidates to device
  */
 void GPUHandler::transferCandidatesToDevice() {
-//    auto start = cuda::event::create(_deviceID, true);
-//    auto stop = cuda::event::create(_deviceID, true);
-//    start.record(cuda::stream::default_stream_id);
-    _deviceCandidates.init(_deviceID, *_chunkCandidates);
-//    stop.record(cuda::stream::default_stream_id);
-//    stop.synchronize();
-//    transferTime += cuda::event::milliseconds_elapsed_between(start, stop);
+
+    DeviceTiming::EventPair* candidatesTransfer = _deviceTimings.add( "Transfer candidates to device (allocate + copy)", 0);
+    _deviceCandidates.init(*_chunkCandidates);
+    _deviceTimings.finish(candidatesTransfer);
 }
 
 /**
  * Free device memory used for candidates
  */
 void GPUHandler::freeCandidatesFromDevice() {
-//    GPUTimer::EventPair* freeCandidates = _gpuTimer.add("free_candidates", nullptr);
+    DeviceTiming::EventPair* candidatesFree = _deviceTimings.add("Free candidates from device memory", 0);
     _deviceCandidates.free();
-//    _gpuTimer.finish(freeCandidates);
+    _deviceTimings.finish(candidatesFree);
 }
 
 void GPUHandler::reserveCandidateSpace(size_t size) {
     _numberOfRecords = size;
     _hostCandidates = new HostArray<unsigned int>(_maxNumberOfCandidates, _numberOfRecords);
+}
+
+void GPUHandler::addIndexedRecord(std::vector<unsigned int> tokens)
+{
+    _hostInputCollection.addStart(_hostInputCollection.tokens.size());
+    for (const auto& x : tokens) {
+        _hostInputCollection.addToken(x);
+	}
+    _hostInputCollection.addSize(tokens.size());
+}
+
+void GPUHandler::addForeignRecord(std::vector<unsigned int> tokens)
+{
+    _hostForeignInputCollection.addStart(_hostForeignInputCollection.tokens.size());
+    for (const auto& x : tokens) {
+        _hostForeignInputCollection.addToken(x);
+    }
+    _hostForeignInputCollection.addSize(tokens.size());
 }
 
 /**
@@ -65,10 +111,8 @@ void GPUHandler::doJoin()
     // wait for gpu thread to finish (if it's running)
     if (_gpuThread.joinable()) _gpuThread.join();
 
-    //if (_isGroupJoin) this->serializeMap();
-
     // move candidates to another array, so the cpu can continue to
-    // use the main canidates array
+    // use the main candidates array
     _chunkCandidates = new HostArray<unsigned int>(*_hostCandidates);
     _hostCandidates = new HostArray<unsigned int>(_maxNumberOfCandidates, _numberOfRecords);
 
@@ -77,95 +121,66 @@ void GPUHandler::doJoin()
     // start the gpu join process
     _gpuThread = std::thread(&GPUHandler::invokeGPU, this, numOfRecords);
 
-    _numOfCandidates = 0;
+    _numberOfCandidates = 0;
 }
 
 void GPUHandler::invokeGPU(unsigned int numOfRecords)
 {
-    this->transferCandidatesToDevice();
-    DefaultLaunchParameters launchParameters(_scenario, _aggregate, _numOfThreads, numOfRecords, _maxSetSize);
+    transferCandidatesToDevice();
+    makeLaunchParameters();
 
     if (_aggregate) {
-        _deviceCounts.init(_deviceID, launchParameters.blocks);
+        _deviceResults.init(_blocks);
     } else {
-        _devicePairs.init(_deviceID, _chunkCandidates->getArraySize());
+        _deviceResults.init(_chunkCandidates->getArraySize());
     }
-    // TODO refactor for a more elegant gpu call :D
 
-    typedef void (*AggregateKernel)( unsigned int*, unsigned int*, unsigned int*, unsigned int*, unsigned int*, unsigned int, double);
-    typedef void (*PairsPairKernel)( unsigned int*, unsigned int*, unsigned int*, unsigned int*, bool*, unsigned int, double);
-
-    std::unordered_map<std::string, AggregateKernel> aggregateMap;
-    aggregateMap["A"] = &scenarioA<true, unsigned int, unsigned int, unsigned int>;
-    aggregateMap["B"] = &scenarioB<true, unsigned int, unsigned int, unsigned int>;
-    aggregateMap["C"] = &scenarioC<true, unsigned int, unsigned int, unsigned int>;
-
-    std::unordered_map<std::string, PairsPairKernel> pairsMap;
-    pairsMap["A"] = &scenarioA<false, unsigned int, unsigned int, bool>;
-    pairsMap["B"] = &scenarioB<false, unsigned int, unsigned int, bool>;
-    pairsMap["C"] = &scenarioC<false, unsigned int, unsigned int, bool>;
-
-
-    auto start_event = cuda::event::create(_deviceID, true);
-    auto stop_event = cuda::event::create(_deviceID, true);
-
-    start_event.record(cuda::stream::default_stream_id);
-    if (_aggregate) {
-        cuda::enqueue_launch(
-                aggregateMap.at(_scenarioKey), cuda::stream::default_stream_id,
-                launchParameters.makeConfig(),
-                _deviceTokens.getArray(), _deviceTokens.getOffsets(),
-                _deviceCandidates.getArray(), _deviceCandidates.getOffsets(),
-                _deviceCounts.getResult(), _maxSetSize, _threshold
-        );
+    DeviceTiming::EventPair* joinTime = _deviceTimings.add("Conduct GPU join", 0);
+    if (_scenario == 1) {
+        scenarioA <<<_blocks, _threads, _sharedMemory >>>(
+                _deviceInputCollection,
+                _binaryJoin ? _deviceForeignCollection : _deviceInputCollection,
+                _deviceCandidates,
+                _deviceResults,
+                _threshold,
+                _aggregate);
+    } else if (_scenario == 2) {
+        scenarioB <<<_blocks, _threads, _sharedMemory >>>(
+                 _deviceInputCollection,
+                 _binaryJoin ? _deviceForeignCollection : _deviceInputCollection,
+                 _deviceCandidates,
+                 _deviceResults,
+                 _threshold,
+                 _maxSetSize,
+                 _aggregate);
     } else {
-        cuda::enqueue_launch(
-                pairsMap.at(_scenarioKey), cuda::stream::default_stream_id,
-                launchParameters.makeConfig(),
-                _deviceTokens.getArray(), _deviceTokens.getOffsets(),
-                _deviceCandidates.getArray(), _deviceCandidates.getOffsets(),
-                _devicePairs.getResult(), _maxSetSize, _threshold
-        );
+        scenarioC <<<_blocks, _threads, _sharedMemory >>>(
+                _deviceInputCollection,
+                _binaryJoin ? _deviceForeignCollection : _deviceInputCollection,
+                _deviceCandidates,
+                _deviceResults,
+                _threshold,
+                _maxSetSize,
+                _aggregate);
     }
-    cuda::device::get(_deviceID).synchronize();
 
-    stop_event.record(cuda::stream::default_stream_id); // record in stream-0, to ensure that all previous CUDA calls have completed
-    stop_event.synchronize();
+    gpuAssert( cudaPeekAtLastError() );
 
-    auto kernel_time = cuda::event::time_elapsed_between(start_event, stop_event);
-    gpuTime += kernel_time.count();
+    gpuAssert(cudaDeviceSynchronize());
 
     if (_aggregate) {
-        _result += thrust::reduce(thrust::device, _deviceCounts.getResult(), _deviceCounts.getResult() + _deviceCounts.getLength());
-        _deviceCounts.free();
-    } else {
-        std::ofstream of;
-        std::ostream * os = &std::cout;
-        of.open("test", std::ofstream::out | std::ofstream::app);
-
-        os = &of;
-        _hostPairs.init(_deviceID, _devicePairs, _devicePairs.getLength());
-        _devicePairs.free();
-        for (int i = 0; i < _chunkCandidates->getOffsetsSize(); i+=2) {
-            unsigned int probeID = _chunkCandidates->getOffsets()[i];
-            unsigned int candidatesStart = i > 0 ? _chunkCandidates->getOffsets()[i - 1] : 0;
-            unsigned int candidatesEnd = _chunkCandidates->getOffsets()[i + 1];
-            for (int j = candidatesStart; j < candidatesEnd; j++)
-                if (_hostPairs.getResult()[j]) {
-                    *os << probeID << " " << _chunkCandidates->getArray()[j] << std::endl;
-                }
-        }
-        _hostPairs.free();
+        thrust::device_ptr<unsigned int> thrustCount(_deviceResults.array);
+        _result += thrust::reduce(thrust::device, thrustCount, thrustCount + _deviceResults.length);
+        _deviceResults.free();
     }
+
+    gpuAssert(cudaDeviceSynchronize());
+    _deviceTimings.finish(joinTime);
 
     this->freeCandidatesFromDevice();
     _chunkCandidates->~HostArray();
 }
 
-
-void GPUHandler::insertToken(unsigned int token) { _hostTokens.addElement(token); }
-
-void GPUHandler::insertTokenOffset(unsigned int offset) { _hostTokens.addOffset(offset); }
 
 void GPUHandler::insertCandidate(unsigned int probe, unsigned int candidate)
 {
@@ -173,8 +188,8 @@ void GPUHandler::insertCandidate(unsigned int probe, unsigned int candidate)
 
     // we deal with any candidates which are not mapped to a probe record
     // in the doJoin function
-    _numOfCandidates++;
-    if (_numOfCandidates == _maxNumberOfCandidates) {
+    _numberOfCandidates++;
+    if (_numberOfCandidates == _maxNumberOfCandidates) {
         this->updateCandidateOffset(probe);
         this->doJoin();
     }
@@ -193,7 +208,7 @@ void GPUHandler::updateMaxSetSize(unsigned int maxSetSize)
 
 void GPUHandler::flush()
 {
-    if (_numOfCandidates > 0) this->doJoin();
+    if (_numberOfCandidates > 0) this->doJoin();
 }
 
 size_t GPUHandler::getResult()
@@ -202,35 +217,21 @@ size_t GPUHandler::getResult()
     return _result;
 }
 
-void GPUHandler::updateCandidateMap(unsigned int probeRecordID, unsigned int candidateID)
-{
-    _candidateMap[probeRecordID].push_back(candidateID);
-    _numOfCandidates++;
-    if (_numOfCandidates == _maxNumberOfCandidates) this->doJoin();
-}
-
-void GPUHandler::serializeMap()
-{
-    for (auto it : _candidateMap) {
-        for (auto v = it.second.begin(); v != it.second.end(); v++)
-            _hostCandidates->addElement(*v);
-        ;
-        _hostCandidates->addOffset(it.first);
-        _hostCandidates->addOffset(_hostCandidates->getArraySize());
-
-        it.second.clear();
-        it.second.shrink_to_fit();
-    }
-    _candidateMap.clear();
-}
-
 float GPUHandler::getGPUJoinTime()
 {
-//    return _gpuTimer.sum("GPUJoin");
-    return gpuTime;
+//    std::cout << _deviceTimings;
+    return _deviceTimings.sum("");
 }
 
 float GPUHandler::getGPUTransferTime()
 {
-    return transferTime;
+    return _deviceTimings.sum("") + _deviceTimings.sum("") + _deviceTimings.sum("");
+}
+
+void GPUHandler::free()
+{
+    freeInputCollection();
+    if (_binaryJoin) {
+        freeForeignInputCollection();
+    }
 }

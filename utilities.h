@@ -1,9 +1,5 @@
-//
-// Created by chribell on 1/3/18.
-//
-
-#ifndef SSJ_UTILITIES_H
-#define SSJ_UTILITIES_H
+#ifndef GPUSSJOIN_UTILITIES_H
+#define GPUSSJOIN_UTILITIES_H
 
 #include <cstddef>
 
@@ -24,8 +20,6 @@ struct memory_calculator
         }
         return static_cast<size_t>(size / (sizeof (I)));
     }
-
-
 };
 
 typedef memory_calculator<unsigned int> default_memory_calculator;

@@ -1,137 +1,84 @@
-#ifndef GPU_HANDLER_H
-#define GPU_HANDLER_H
+#ifndef GPUSSJOIN_HANDLER_H
+#define GPUSSJOIN_HANDLER_H
 
 #pragma once
 #include <thread>
 #include <unordered_map>
-#include "gpujoin/classes.hxx"
-
+#include "gpujoin/structs.hxx"
+#include "gpujoin/device_timing.hxx"
+#include "definitions.h"
 
 class GPUHandler
 {
 public:
-    // 1 allpairs, 2 ppjoin, 3 groupjoin
-    GPUHandler(unsigned int algorithm, unsigned scenario, bool aggregate,
-               double threshold, unsigned int numOfThreads, size_t maxNumberOfCandidates) :
+    GPUHandler(unsigned scenario, bool aggregate,
+               double threshold, unsigned int threads, size_t maxNumberOfCandidates) :
             _scenario(scenario),
             _aggregate(aggregate),
             _threshold(threshold),
-            _numOfThreads(numOfThreads),
-            _maxNumberOfCandidates(maxNumberOfCandidates) {
-        std::string s = "A";
-        switch (_scenario) {
-            case 2:
-                s = "B";
-                break;
-            case 3:
-                s = "C";
-                break;
-            default:
-                break;
-        }
-        if (algorithm == 3) {
-            _isGroupJoin = true;
-        }
-        _scenarioKey = s;
-        _deviceID = cuda::device::current::get().id();
-    };
+            _threads(threads),
+            _maxNumberOfCandidates(maxNumberOfCandidates) {};
 
-    template <class T>
-    struct LaunchParameters {
-        unsigned int blocks = 0;
-        unsigned int threads = 0;
-        cuda::memory::shared::size_t sharedMemory = 0;
+    void addIndexedRecord(std::vector<unsigned int> tokens);
+    void addForeignRecord(std::vector<unsigned int> tokens);
 
-        LaunchParameters(unsigned int scenario, bool count, unsigned int threads,
-                         unsigned int numberOfRecords , unsigned int maxSetSize) : threads(threads){
-            switch (scenario) {
-                case 1:
-                    blocks = (numberOfRecords + threads - 1 ) / threads;
-                    sharedMemory = count ? threads * sizeof(unsigned int) : 0;
-                    break;
-                case 2:
-                    blocks = numberOfRecords;
-                    sharedMemory = maxSetSize * sizeof(T) + (count ? threads * sizeof(unsigned int) : 0);
-                    break;
-                case 3:
-                    blocks = numberOfRecords;
-                    sharedMemory = 2 * maxSetSize * sizeof(T) + threads * sizeof(unsigned int);
-                    break;
-                default:
-                    break;
-            }
-        };
+    void transferInputCollection();
+    void transferForeignInputCollection();
 
-        inline cuda::launch_configuration_t makeConfig() {
-            return cuda::make_launch_config(blocks, threads, sharedMemory);
-        }
-
-    };
-    typedef LaunchParameters<unsigned int> DefaultLaunchParameters;
-
-    void insertToken(unsigned int token);
-    void insertTokenOffset(unsigned int offset);
     void insertCandidate(unsigned int probe, unsigned int candidate);
     void updateCandidateOffset(unsigned int probe);
     void updateMaxSetSize(unsigned int maxSetSize);
     void reserveCandidateSpace(size_t size);
-
-
-    void updateCandidateMap(unsigned int probeRecordID, unsigned int candidateID);
-
-    void transferTokensToDevice();
-    void freeTokensFromDevice();
     void flush();
+    void free();
 
     size_t getResult();
     float  getGPUJoinTime();
     float  getGPUTransferTime();
 private:
+
+    void freeInputCollection();
+    void freeForeignInputCollection();
+
+    void makeLaunchParameters();
     void doJoin();
     void invokeGPU(unsigned int numOfRecords);
     void transferCandidatesToDevice();
     void freeCandidatesFromDevice();
 
-    void serializeMap();
+    DeviceTiming _deviceTimings;
 
-    int _deviceID;
-    GPUTimer _gpuTimer;
-    bool _isGroupJoin = false;
-    bool _aggregate = false;
-
-    HostVector<unsigned int> _hostTokens;
-    HostArray<unsigned int>* _hostCandidates;
-    HostArray<unsigned int>* _chunkCandidates;
-
-    DeviceArray<unsigned int> _deviceTokens;
-    DeviceArray<unsigned int> _deviceCandidates;
-
-    DeviceCountResult _deviceCounts;
-    DevicePairResult _devicePairs;
-    HostPairResult _hostPairs;
-
+    // constructor input
+    unsigned int _scenario;
+    bool _aggregate = true;
+    double _threshold;
+    unsigned int _threads;
     size_t _maxNumberOfCandidates = 0;
+
+    // kernel specific
+    unsigned int _blocks;
+    size_t _sharedMemory = 0;
+
+    bool _binaryJoin = false;
+    unsigned int _maxSetSize = 0;
     size_t _numberOfRecords = 0;
-
-
-    std::thread _gpuThread;
+    size_t _numberOfCandidates = 0;
 
     size_t _result = 0;
 
-    double _threshold;
-    unsigned int _numOfThreads;
-    std::string _scenarioKey;
+    std::thread _gpuThread;
 
-    unsigned int _scenario = 1;
+    Collection _hostInputCollection;
+    Collection _hostForeignInputCollection;
 
-    float gpuTime = 0.0;
-    float transferTime = 0.0;
+    DeviceCollection _deviceInputCollection;
+    DeviceCollection _deviceForeignCollection;
 
-    // used in groupjoin
-    std::unordered_map<unsigned int, std::vector<unsigned int>> _candidateMap;
-    size_t _numOfCandidates = 0;
-    unsigned int _maxSetSize = 0;
+    HostArray<unsigned int>* _hostCandidates;
+    HostArray<unsigned int>* _chunkCandidates;
 
+    DeviceCandidates<unsigned int> _deviceCandidates;
+    DeviceArray<unsigned int> _deviceResults;
 };
 
-#endif
+#endif // GPUSSJOIN_HANDLER_H

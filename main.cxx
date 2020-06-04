@@ -274,8 +274,6 @@ int main(int argc, char ** argv) {
         return 1;
     }
 
-	GPUHandler* gpuHandler;
-
     unsigned int blockSize = vm["threads"].as<unsigned int>();
     unsigned int scenario = vm["scenario"].as<unsigned int>();
 
@@ -286,7 +284,13 @@ int main(int argc, char ** argv) {
 
     size_t nnn = calculator.numberOfElements();
 
-	gpuHandler = new GPUHandler(algoID, scenario, aggregate, threshold, blockSize, nnn);
+	/**
+	 * scenario: 1 -> A, 2 -> B, 3 -> C
+	 * aggregate: flag, true for aggregation, false for output to file
+	 * blockSize: kernel thread block size
+	 * nnn: number of pairs to be verified per GPU invocation
+	 */
+	auto gpuHandler = new GPUHandler(scenario, aggregate, threshold, blockSize, nnn);
 
 	Timing::Interval * algoindex = timings.add("algoindex");
 	algo->doindex(gpuHandler);
@@ -295,8 +299,6 @@ int main(int argc, char ** argv) {
 	std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 	algo->dojoin(handleoutput);
 	std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-
-//	std::chrono::milliseconds gpuJoinTime(gpuHandler->getGPUJoinTime());
 
 	std::cout
             << scenario // scenario 1=> A, 2=> B, 3 => C

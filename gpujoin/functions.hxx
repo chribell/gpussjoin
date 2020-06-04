@@ -1,18 +1,18 @@
 #ifndef GPU_JOIN_FUNCTIONS_HXX
 #define GPU_JOIN_FUNCTIONS_HXX
 
-#include <cuda_runtime_api.h>
-
-__forceinline__ __device__  unsigned int intersection_shared(unsigned int* probingSet, unsigned int probingSetEnd, unsigned int* candidateSet,
-                                                   unsigned int candidateSetEnd)
+__forceinline__ __device__  unsigned int intersection(
+        unsigned int* foreignTokens, unsigned int* inputTokens,
+        unsigned int probeStart, unsigned int probeEnd,
+        unsigned int candidateStart, unsigned int candidateEnd)
 {
     unsigned int count = 0;
-    unsigned int i = 0, j = 0;
-    while (i < probingSetEnd && j < candidateSetEnd)
+    unsigned int i = probeStart, j = candidateStart;
+    while (i < probeEnd && j < candidateEnd)
     {
-        if (probingSet[i] < candidateSet[j])
+        if (foreignTokens[i] < inputTokens[j])
             i++;
-        else if (candidateSet[j] < probingSet[i])
+        else if (inputTokens[j] < foreignTokens[i])
             j++;
         else // intersect
         {
@@ -21,46 +21,6 @@ __forceinline__ __device__  unsigned int intersection_shared(unsigned int* probi
         }
     }
     return count;
-}
-
-__forceinline__ __device__  unsigned int intersection_shared(unsigned int* tokens, unsigned int* querySet, unsigned int recordStart, unsigned int recordEnd,
-                                            unsigned int candidateStart, unsigned int candidateEnd)
-{
-    unsigned int count = 0;
-    unsigned int i = 0, j = candidateStart;
-    while (i < (recordEnd - recordStart) && j < candidateEnd)
-    {
-        if (querySet[i] < tokens[j])
-            i++;
-        else if (tokens[j] < querySet[i])
-            j++;
-        else // intersect
-        {
-            count++;
-            i++;
-        }
-    }
-    return count;
-}
-
-__forceinline__ __device__  double intersection(unsigned int* tokens, unsigned int recordStart, unsigned int recordEnd,
-                                     unsigned int candidateStart, unsigned int candidateEnd)
-{
-    unsigned int count = 0;
-    unsigned int i = recordStart, j = candidateStart;
-    while (i < recordEnd && j < candidateEnd)
-    {
-        if (tokens[i] < tokens[j])
-            i++;
-        else if (tokens[j] < tokens[i])
-            j++;
-        else // intersect
-        {
-            count++;
-            i++;
-        }
-    }
-    return (double) count;
 }
 
 __forceinline__ __device__  int myMax(int a, int b)
@@ -72,7 +32,6 @@ __forceinline__ __device__  int myMin(int a, int b)
 {
     return (a > b) ? b : a;
 }
-
 
 
 __forceinline__ __device__  int merge_path(unsigned int* a, unsigned int aSize,

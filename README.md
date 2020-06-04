@@ -10,7 +10,6 @@ Due to execution overlap between the CPU and GPU, on large datasets where billio
 ## Dependencies
 
 * Boost Library (program_options component for cli arguments)
-* cuda-api-wrappers https://github.com/eyalroz/cuda-api-wrappers 
 
 ## Building 
 ```

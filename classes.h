@@ -18,22 +18,15 @@
  * You should have received a copy of the GNU General Public License
  * along with set_sim_join.  If not, see <http://www.gnu.org/licenses/>.
  */
-
+#pragma once
 #include<vector>
 #include <sparsehash/dense_hash_map>
+#include "definitions.h"
 #include "similarity.h"
 #include "statistics.h"
 #include "mpltricks.h"
 #include "gpu_handler.h"
 
-template <class elementtype>
-class Record {
-	public:
-		typedef std::vector<elementtype> Tokens;
-		typedef unsigned int recordid_type;
-		recordid_type recordid;
-		Tokens tokens;
-};
 
 // forward-declare HandleOutput class
 class HandleOutput;
