@@ -22,9 +22,11 @@ Due to execution overlap between the CPU and GPU, on large datasets where billio
   --algorithm arg       algorithm to (allpairs, ppjoin, groupjoin)
   --threshold arg       jaccard threshold
   --input arg           file, each line a record
+  --foreign-input arg   file, each line a record (binary join) 
   --threads arg         Number of threads per block
   --devmemory arg       device memory to use (e.g. 512M, 4GB)
   --scenario arg        gpu scenario to execute (1, 2, 3)
+  --result arg          output file to store join result pairs
 ```
 
 ```
