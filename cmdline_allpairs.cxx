@@ -83,7 +83,7 @@ Algorithm * allpairs_cmd_line(boost::program_options::variables_map & vm) {
 	}
 
 
-	if(vm.count("foreign-linewise")) {
+	if(vm.count("foreign-input")) {
 		allPairsIndexingStrategyPattern[2] = 1;
 	} else if(vm.count("indexfirst")) {
 		allPairsIndexingStrategyPattern[1] = 1;

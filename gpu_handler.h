@@ -12,12 +12,15 @@ class GPUHandler
 {
 public:
     GPUHandler(unsigned scenario, bool aggregate,
-               double threshold, unsigned int threads, size_t maxNumberOfCandidates) :
+               double threshold, unsigned int threads,
+               size_t maxNumberOfCandidates, bool binaryJoin, const std::string& outFile) :
             _scenario(scenario),
             _aggregate(aggregate),
             _threshold(threshold),
             _threads(threads),
-            _maxNumberOfCandidates(maxNumberOfCandidates) {};
+            _maxNumberOfCandidates(maxNumberOfCandidates),
+            _binaryJoin(binaryJoin),
+            _outFile(outFile) {};
 
     void addIndexedRecord(std::vector<unsigned int> tokens);
     void addForeignRecord(std::vector<unsigned int> tokens);
@@ -25,16 +28,19 @@ public:
     void transferInputCollection();
     void transferForeignInputCollection();
 
-    void insertCandidate(unsigned int probe, unsigned int candidate);
-    void updateCandidateOffset(unsigned int probe);
+    void insertProbe(unsigned int probe);
+
+    void insertCandidate(unsigned int candidate);
+
+    void updateProbeNumberOfCandidates();
+
     void updateMaxSetSize(unsigned int maxSetSize);
-    void reserveCandidateSpace(size_t size);
+    void reserveCandidateSpace();
     void flush();
     void free();
 
     size_t getResult();
-    float  getGPUJoinTime();
-    float  getGPUTransferTime();
+    float  getGPUTotalTime();
 private:
 
     void freeInputCollection();
@@ -63,6 +69,9 @@ private:
     unsigned int _maxSetSize = 0;
     size_t _numberOfRecords = 0;
     size_t _numberOfCandidates = 0;
+    unsigned int _candidateCounter = 0;
+
+    std::string _outFile;
 
     size_t _result = 0;
 
@@ -74,8 +83,8 @@ private:
     DeviceCollection _deviceInputCollection;
     DeviceCollection _deviceForeignCollection;
 
-    HostArray<unsigned int>* _hostCandidates;
-    HostArray<unsigned int>* _chunkCandidates;
+    HostCandidates<unsigned int>* _hostCandidates;
+    HostCandidates<unsigned int>* _chunkCandidates;
 
     DeviceCandidates<unsigned int> _deviceCandidates;
     DeviceArray<unsigned int> _deviceResults;

@@ -51,7 +51,10 @@ class GenericSimilarity {
 		inline static unsigned int maxsize(unsigned int len, unsigned int pos, threshold_type threshold) {
 			return Similarity::maxsize(len, pos, threshold);
 		}
-		
+
+        inline static int outputall_le(threshold_type threshold) {
+            return Similarity::outputall_le(threshold);
+        }
 };
 
 class JaccardSimilarity {
@@ -72,7 +75,11 @@ class JaccardSimilarity {
 		inline static unsigned int maxsize(unsigned int len, unsigned int pos, double threshold) {
 			return (unsigned int)((len - ((1.0 - PMAXSIZE_EPS) + threshold) * pos) / threshold);
 		}
-		
+
+        inline static int outputall_le(threshold_type threshold) {
+            return -1;
+        }
+
 };
 
 class CosineSimilarity {
@@ -93,7 +100,11 @@ class CosineSimilarity {
 		inline static unsigned int maxsize(unsigned int len, unsigned int pos, double threshold) {
 			return (unsigned int)(PMAXSIZE_EPS + (len * len - 2 * len * pos + pos * pos)/(len * threshold * threshold));
 		}
-		
+
+        inline static int outputall_le(threshold_type threshold) {
+            return -1;
+        }
+
 };
 
 class DiceSimilarity {
@@ -114,7 +125,11 @@ class DiceSimilarity {
 		inline static unsigned int maxsize(unsigned int len, unsigned int pos, double threshold) {
 			return (unsigned int)(((2 - threshold) * len - (2 - PMAXSIZE_EPS) * pos) / threshold);
 		}
-		
+
+        inline static int outputall_le(threshold_type threshold) {
+            return -1;
+        }
+
 };
 
 class HammingSimilarity {
@@ -141,6 +156,10 @@ class HammingSimilarity {
 		inline static unsigned int maxsize(unsigned int len, unsigned int pos, threshold_type threshold) {
 			return len + threshold - 2 * pos;
 		}
+
+        inline static int outputall_le(threshold_type threshold) {
+            return threshold;
+        }
 
 };
 

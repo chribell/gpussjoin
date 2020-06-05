@@ -46,7 +46,7 @@ Algorithm * GroupJoin_Unroll<Similarity>::groupjoin_cmd_line(boost::program_opti
 		groupJoinIndexStructurePattern[0] = true;
 	}
 
-	if(vm.count("foreign-linewise")) {
+	if(vm.count("foreign-input")) {
 		groupJoinIndexingStrategyPattern[2] = 1;
 	} else if(vm.count("indexfirst")) {
 		groupJoinIndexingStrategyPattern[1] = 1;

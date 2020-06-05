@@ -48,7 +48,7 @@ Algorithm * MpJoin_Unroll<Similarity>::mpjoin_cmd_line(boost::program_options::v
 		mpJoinIndexStructurePattern[0] = true;
 	}
 
-	if(vm.count("foreign-linewise")) {
+	if(vm.count("foreign-input")) {
 		mpJoinIndexingStrategyPattern[2] = 1;
 	} else if(vm.count("indexfirst")) {
 		mpJoinIndexingStrategyPattern[1] = 1;

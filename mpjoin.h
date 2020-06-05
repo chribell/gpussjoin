@@ -207,7 +207,7 @@ void MpJoin<MpJoinSimilarity, MpJoinIndexStructurePolicy, MpJoinIndexingStrategy
         }
         _gpuHandler->transferForeignInputCollection();
     }
-    _gpuHandler->reserveCandidateSpace(Index::SELF_JOIN ? indexedrecords.size() : foreignrecords.size());
+    _gpuHandler->reserveCandidateSpace();
 }
 
 template <typename MpJoinSimilarity, typename MpJoinIndexStructurePolicy, class MpJoinIndexingStrategyPolicy, class MpJoinLengthFilterPolicy, typename MpJoinBitfilterPolicy>
@@ -236,6 +236,8 @@ void MpJoin<MpJoinSimilarity, MpJoinIndexStructurePolicy, MpJoinIndexingStrategy
 
 		//Minimum size of records in index
 		unsigned int minsize = Similarity::minsize(reclen, threshold);
+
+		_gpuHandler->insertProbe(recind);
 
 		// Check whether cache is to renew
 		if(lastprobesize != reclen) {
@@ -343,7 +345,7 @@ void MpJoin<MpJoinSimilarity, MpJoinIndexStructurePolicy, MpJoinIndexingStrategy
 					}
 					candidateSet.addRecord(ilit->recordid);
 					candidateData.minoverlap = minoverlapcache[indreclen];
-					_gpuHandler->insertCandidate(recind, ilit->recordid);
+					_gpuHandler->insertCandidate(ilit->recordid);
 
 				}
 
@@ -361,7 +363,7 @@ void MpJoin<MpJoinSimilarity, MpJoinIndexStructurePolicy, MpJoinIndexingStrategy
 
 		// Candidate set after prefix filter
 		statistics.candidatesP1.add(candidateSet.size());
-		_gpuHandler->updateCandidateOffset(recind);
+		_gpuHandler->updateProbeNumberOfCandidates();
 
 		candidateSet.reset();
 		candidateSet.clear();

@@ -45,43 +45,38 @@ struct Collection
 };
 
 template <class T>
-class HostArray
+struct HostCandidates
 {
-private:
-    typedef T* Array;
-    typedef unsigned int* Offsets;
-    Array _array;
-    Offsets _offsets;
-    size_t _arraySize = 0;
-    size_t _offsetsSize = 0;
-public:
-    HostArray(size_t arraySize, size_t offsetsSize){
-        _array = new T[arraySize];
-        _offsets = new unsigned int[offsetsSize * 2]; // fat offsets
-        _arraySize = 0;
-        _offsetsSize = 0;
+    typedef std::vector<T> Candidates;
+    typedef std::vector<T> Probes;
+    typedef std::vector<unsigned int> Starts;
+    typedef std::vector<unsigned int> Sizes;
+    Candidates candidates;
+    Probes probes;
+    Starts starts;
+    Sizes sizes;
+
+    HostCandidates() = default;
+
+    HostCandidates(size_t numOfCandidates, size_t numOfProbes) {
+        candidates.reserve(numOfCandidates);
+        probes.reserve(numOfProbes);
+        starts.reserve(numOfProbes);
+        sizes.reserve(numOfProbes);
     }
-    HostArray(HostArray<T>& hostArray){
-        std::swap(_array, hostArray._array);
-        std::swap(_arraySize, hostArray._arraySize);
-        std::swap(_offsets, hostArray._offsets);
-        std::swap(_offsetsSize , hostArray._offsetsSize);
+    HostCandidates(HostCandidates<T>& hostCandidates) {
+        candidates.swap(hostCandidates.candidates);
+        probes.swap(hostCandidates.probes);
+        starts.swap(hostCandidates.starts);
+        sizes.swap(hostCandidates.sizes);
+        hostCandidates.clear(); // lazy
     }
 
-    inline void addElement(T element) {
-        _array[_arraySize++] = element;
-    }
-    inline void addOffset(unsigned int offset) {
-        _offsets[_offsetsSize++] = offset;
-    }
-    inline Array getArray() { return _array; }
-    inline Offsets getOffsets() { return _offsets; }
-    inline size_t getArraySize() { return _arraySize; }
-    inline size_t getOffsetsSize() { return _offsetsSize; }
-
-    ~HostArray(){
-        delete[] _array;
-        delete[] _offsets;
+    inline void clear() {
+        candidates.clear();
+        probes.clear();
+        starts.clear();
+        sizes.clear();
     }
 };
 
@@ -170,22 +165,39 @@ struct DeviceCollection {
 
 template <class T>
 struct DeviceCandidates {
-    DeviceArray<unsigned int> candidates;
-    DeviceArray<unsigned int> offsets;
+    DeviceArray<T> candidates;
+    DeviceArray<T> probes;
+    DeviceArray<unsigned int> starts;
+    DeviceArray<unsigned int> sizes;
 
-    inline void init(HostArray<T>& hostArray) {
-        candidates.init(hostArray.getArraySize(), hostArray.getArray());
-        offsets.init(hostArray.getOffsetsSize(), hostArray.getOffsets());
+    inline void init(HostCandidates<T>& hostCandidates) {
+        candidates.init(hostCandidates.candidates);
+        probes.init(hostCandidates.probes);
+        starts.init(hostCandidates.starts);
+        sizes.init(hostCandidates.sizes);
     }
 
     inline void free() {
         candidates.free();
-        offsets.free();
+        probes.free();
+        starts.free();
+        sizes.free();
     }
 
 };
 
+template <class T>
+struct HostArray {
+    typedef std::vector<T> Array;
+    Array array;
 
+    HostArray() = default;
+
+    inline void init(DeviceArray<T>& deviceArray) {
+        array.reserve(deviceArray.length);
+        gpuAssert(cudaMemcpy(&array[0], deviceArray.array, deviceArray.length * sizeof(T), cudaMemcpyDeviceToHost));
+    }
+};
 
 
 #endif // GPUSSJOIN_STRUCTS_HXX

@@ -24,6 +24,7 @@ protected:
 public:
     EventPair* add(std::string const& argName, cudaStream_t const& argStream);
     float sum(std::string const& argName) const;
+    float total() const;
     void finish(EventPair* pair);
     ~DeviceTiming();
     friend std::ostream & operator<<(std::ostream& os, const DeviceTiming& timer);

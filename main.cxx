@@ -199,7 +199,7 @@ int main(int argc, char ** argv) {
 
 		if(vm.count("foreign-input")) {
 			Timing::Interval * readrawforeignrecords = timings.add("readrawforeignrecords");
-
+			foreign = true;
 			std::string foreigninputfile = vm["foreign-input"].as<std::string>();
 			add_raw_input<algoaddforeignrecord>().add_input(algo, foreigninputfile, algoaddforeignrecord());
 
@@ -278,8 +278,10 @@ int main(int argc, char ** argv) {
     unsigned int scenario = vm["scenario"].as<unsigned int>();
 
     bool aggregate = true;
+    std::string outputFile;
 	if(vm.count("result")) {
 		aggregate = false;
+        outputFile = vm["result"].as<std::string>();
 	}
 
     size_t nnn = calculator.numberOfElements();
@@ -289,8 +291,10 @@ int main(int argc, char ** argv) {
 	 * aggregate: flag, true for aggregation, false for output to file
 	 * blockSize: kernel thread block size
 	 * nnn: number of pairs to be verified per GPU invocation
+	 * foreign: true if binary join
+	 * output: result file if not aggregate
 	 */
-	auto gpuHandler = new GPUHandler(scenario, aggregate, threshold, blockSize, nnn);
+	auto gpuHandler = new GPUHandler(scenario, aggregate, threshold, blockSize, nnn, foreign, outputFile);
 
 	Timing::Interval * algoindex = timings.add("algoindex");
 	algo->doindex(gpuHandler);
@@ -308,8 +312,7 @@ int main(int argc, char ** argv) {
             << ","  << threshold // threshold
             << ","  << algo->getResult() // final count
             << ","  << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() /1000000.0 // overall join time
-            << ","  << gpuHandler->getGPUJoinTime() / 1000.0f// gpu join time
-//            << ","  << gpuHandler->getGPUTransferTime() / 1000.0f// gpu allocate transfer candidates time
+            << ","  << gpuHandler->getGPUTotalTime() / 1000.0f // gpu total time
             << std::endl;
 
 	if(vm.count("statistics")) {

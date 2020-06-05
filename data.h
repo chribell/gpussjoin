@@ -266,7 +266,7 @@ struct add_int_records {
 };
 
 
-struct islesss {
+struct tokisless {
 	inline bool operator()(const tokencountcounterhash::iterator & it1, const tokencountcounterhash::iterator & it2) const {
 		return it1->second < it2->second;
 	}
@@ -279,7 +279,7 @@ inline void token2int(tokencountcounterhash & tokencount) {
 	for(; it != tokencount.end(); ++it) {
 		tokensorter.push_back(it);
 	}
-	std::sort(tokensorter.begin(), tokensorter.end(), islesss());
+	std::sort(tokensorter.begin(), tokensorter.end(), tokisless());
 
 	unsigned myint = 0;
 	std::vector<tokencountcounterhash::iterator>::iterator vit = tokensorter.begin();

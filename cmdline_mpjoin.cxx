@@ -19,5 +19,5 @@
 #include "cmdline_mpjoin.h"
 
 Algorithm * mpjoin_cmd_line(boost::program_options::variables_map & vm) {
-	return MpJoin_Unroll<Jaccard>::mpjoin_cmd_line(vm);
+    return MpJoin_Unroll<Jaccard>::mpjoin_cmd_line(vm);
 }

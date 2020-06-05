@@ -179,7 +179,7 @@ void AllPairs<AllPairsSimilarity,AllPairsIndexingStrategyPolicy, AllPairsLengthF
         }
         _gpuHandler->transferForeignInputCollection();
 	}
-    _gpuHandler->reserveCandidateSpace(Index::SELF_JOIN ? indexedrecords.size() : foreignrecords.size());
+    _gpuHandler->reserveCandidateSpace();
 }
 
 template <typename AllPairsSimilarity, class AllPairsIndexingStrategyPolicy, class AllPairsLengthFilterPolicy>
@@ -195,6 +195,8 @@ void AllPairs<AllPairsSimilarity, AllPairsIndexingStrategyPolicy, AllPairsLength
 	for (unsigned recind = 0; recind < proberecordssize(); ++recind) {
 		typename Index::ProbeRecord & record = getproberecord(indexedrecords, foreignrecords, recind);
 		unsigned int reclen = record.tokens.size();
+
+		_gpuHandler->insertProbe(record.recordid);
 
 		//Minimum size of records in index
 		unsigned int minsize = Similarity::minsize(reclen, threshold);
@@ -265,7 +267,7 @@ void AllPairs<AllPairsSimilarity, AllPairsIndexingStrategyPolicy, AllPairsLength
 
 				if(candidateData.count == 0) {
 					candidateSet.addRecord(ilit->recordid);
-					_gpuHandler->insertCandidate(recind, ilit->recordid);
+					_gpuHandler->insertCandidate(indexedrecords[ilit->recordid].recordid);
                 }
 
 				candidateData.count += 1;
@@ -274,7 +276,7 @@ void AllPairs<AllPairsSimilarity, AllPairsIndexingStrategyPolicy, AllPairsLength
 		}
 
 		statistics.candidatesP1.add(candidateSet.size());
-        _gpuHandler->updateCandidateOffset(recind);
+        _gpuHandler->updateProbeNumberOfCandidates();
 
         candidateSet.reset();
 

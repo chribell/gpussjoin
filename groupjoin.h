@@ -264,7 +264,7 @@ void GroupJoin<MpJoinSimilarity, MpJoinIndexStructurePolicy, MpJoinIndexingStrat
         }
         _gpuHandler->transferForeignInputCollection();
     }
-    _gpuHandler->reserveCandidateSpace(Index::SELF_JOIN ? indexedrecords.size() : foreignrecords.size());
+    _gpuHandler->reserveCandidateSpace();
 }
 
 template < class GroupProbeRecord, class RecordType, class Similarity, class Statistics>
@@ -316,6 +316,8 @@ void GroupJoin<MpJoinSimilarity, MpJoinIndexStructurePolicy, MpJoinIndexingStrat
 
 		typename Index::GroupProbeRecord & grecord = getgroupproberecord(groupindexedrecords, groupforeignrecords, grecind);
 		unsigned int greclen = grecord.size;
+
+		_gpuHandler->insertProbe(grecord.firstgrouprecord->recordid);
 
 		//Minimum size of records in index
 		unsigned int minsize = Similarity::minsize(greclen, threshold);
@@ -415,7 +417,7 @@ void GroupJoin<MpJoinSimilarity, MpJoinIndexStructurePolicy, MpJoinIndexingStrat
 					}
 
 					candidateSet.addRecord(ilit->grouprecordid);
-                    _gpuHandler->insertCandidate(grecord.firstgrouprecord->recordid, groupindexedrecords[ilit->grouprecordid].firstgrouprecord->recordid);
+                    _gpuHandler->insertCandidate(groupindexedrecords[ilit->grouprecordid].firstgrouprecord->recordid);
 
 					candidateData.minoverlap = minoverlap;
 
@@ -435,7 +437,7 @@ void GroupJoin<MpJoinSimilarity, MpJoinIndexStructurePolicy, MpJoinIndexingStrat
 
 		// Candidate set after prefix filter
 		statistics.candidatesP1.add(candidateSet.size());
-        _gpuHandler->updateCandidateOffset(grecord.firstgrouprecord->recordid);
+        _gpuHandler->updateProbeNumberOfCandidates();
 
 		//Now, verify candidates
 

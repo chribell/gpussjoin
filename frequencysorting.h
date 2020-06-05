@@ -158,7 +158,7 @@ struct algo_handle_records_freq_sort {
 		foreignrecords.push_back(ForeignRecord());
 		ForeignRecord & rec = foreignrecords[foreignrecords.size() - 1];
 		rec.tokens.swap(record.tokens);
-		rec.recordid = nextrecordid;
+		rec.recordid = nextforeignrecordid;
 		nextforeignrecordid += 1;
 		return rec;
 	}

@@ -15,17 +15,14 @@ __global__ void scenarioA(DeviceCollection indexedCollection, DeviceCollection p
     unsigned int candidatesStart = 0;
     unsigned int candidatesEnd = 0;
 
-    // candidateOffsets[globalID * 2] gives us the probe set id
-    unsigned int probeSetID = candidates.offsets[globalID * 2];
+    unsigned int probeSetID = candidates.probes[globalID];
 
     recordStart = probeCollection.starts[probeSetID];
     recordEnd = recordStart + probeCollection.sizes[probeSetID];
 
-    // candidateOffsets[(blockID * 2) + 1]
-    candidatesStart = globalID > 0 ? candidates.offsets[(globalID * 2) - 1] : 0;
+    candidatesStart = candidates.starts[globalID];
 
-    // candidateOffsets[(blockID * 2) + 1] gives us the current's probe set candidates offset
-    candidatesEnd = candidates.offsets[(globalID * 2) + 1];
+    candidatesEnd = candidatesStart + candidates.sizes[globalID];
 
     if (candidatesEnd - candidatesStart <= 0) return; // has no candidates
 
@@ -33,6 +30,7 @@ __global__ void scenarioA(DeviceCollection indexedCollection, DeviceCollection p
     unsigned int counter = 0;
     for (unsigned int offset = candidatesStart; offset < candidatesEnd; ++offset) {
         unsigned int candidate = candidates.candidates[offset];
+
 
         unsigned int candidateRecordStart = indexedCollection.starts[candidate];
         unsigned int candidateRecordEnd = indexedCollection.starts[candidate] + indexedCollection.sizes[candidate];
@@ -79,17 +77,15 @@ __global__ void scenarioB(DeviceCollection indexedCollection, DeviceCollection p
     unsigned int candidatesStart = 0;
     unsigned int candidatesEnd = 0;
 
-    // candidateOffsets[globalID * 2] gives us the probe set id
-    unsigned int probeSetID = candidates.offsets[blockID * 2];
+
+    unsigned int probeSetID = candidates.probes[blockID];
 
     recordStart = probeCollection.starts[probeSetID];
     recordEnd = recordStart + probeCollection.sizes[probeSetID];
 
-    // candidateOffsets[(blockID * 2) + 1]
-    candidatesStart = blockID > 0 ? candidates.offsets[(blockID * 2) - 1] : 0;
+    candidatesStart = candidates.starts[blockID];
 
-    // candidateOffsets[(blockID * 2) + 1] gives us the current's probe set candidates offset
-    candidatesEnd = candidates.offsets[(blockID * 2) + 1];
+    candidatesEnd = candidatesStart + candidates.sizes[blockID];
 
     if (candidatesEnd - candidatesStart <= 0) return; // has no candidates
 
@@ -152,17 +148,17 @@ __global__ void scenarioC(DeviceCollection indexedCollection, DeviceCollection p
     unsigned int candidatesEnd = 0;
 
     // candidateOffsets[blockID * 2] gives us the probe set id
-    unsigned int probeSetID = candidates.offsets[blockID * 2];
+    unsigned int probeSetID = candidates.probes[blockID];
 
     // first record should be handle differently
     recordStart = probeCollection.starts[probeSetID];
     recordEnd = recordStart + probeCollection.sizes[probeSetID];
 
     // candidateOffsets[(blockID * 2) + 1]
-    candidatesStart = blockID > 0 ? candidates.offsets[(blockID * 2) - 1] : 0;
+    candidatesStart = candidates.starts[blockID];
 
     // candidateOffsets[(blockID * 2) + 1] gives us the current's probe set candidates offset
-    candidatesEnd = candidates.offsets[(blockID * 2) + 1];
+    candidatesEnd = candidatesStart + candidates.sizes[blockID];
 
     if (candidatesEnd - candidatesStart <= 0) return; // has no candidates
 

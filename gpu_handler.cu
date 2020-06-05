@@ -1,6 +1,7 @@
 #include "gpu_handler.h"
 #include "gpujoin/scenarios.hxx"
 #include <ostream>
+#include <fstream>
 
 
 #include <thrust/reduce.h>
@@ -13,13 +14,13 @@
 void GPUHandler::makeLaunchParameters()
 {
     if (_scenario == 1) {
-        _blocks = (_numberOfRecords + _threads - 1) / _threads;
+        _blocks = (_deviceCandidates.probes.length + _threads - 1) / _threads;
         _sharedMemory = _aggregate ? _threads * sizeof(unsigned int) : 0;
     } else if (_scenario == 2) {
-        _blocks = _numberOfRecords;
+        _blocks = _deviceCandidates.probes.length;
         _sharedMemory = _maxSetSize * sizeof(unsigned int) + (_aggregate ? _threads * sizeof(unsigned int) : 0);
     } else {
-        _blocks = _numberOfRecords;
+        _blocks = _deviceCandidates.probes.length;
         _sharedMemory = 2 * _maxSetSize * sizeof(unsigned int) + _threads * sizeof(unsigned int);
     }
 }
@@ -46,7 +47,6 @@ void GPUHandler::freeInputCollection() {
  * Transfer foreign input collection to device
  */
 void GPUHandler::transferForeignInputCollection() {
-    _binaryJoin = true;
     DeviceTiming::EventPair* foreignTransfer = _deviceTimings.add( "Transfer foreign input collection to device (allocate + copy)", 0);
     _deviceForeignCollection.init(_hostForeignInputCollection);
     _deviceTimings.finish(foreignTransfer);
@@ -80,9 +80,9 @@ void GPUHandler::freeCandidatesFromDevice() {
     _deviceTimings.finish(candidatesFree);
 }
 
-void GPUHandler::reserveCandidateSpace(size_t size) {
-    _numberOfRecords = size;
-    _hostCandidates = new HostArray<unsigned int>(_maxNumberOfCandidates, _numberOfRecords);
+void GPUHandler::reserveCandidateSpace() {
+    _numberOfRecords = _binaryJoin ? _hostForeignInputCollection.sizes.size() : _hostInputCollection.sizes.size();
+    _hostCandidates = new HostCandidates<unsigned int>(_maxNumberOfCandidates, _numberOfRecords);
 }
 
 void GPUHandler::addIndexedRecord(std::vector<unsigned int> tokens)
@@ -113,10 +113,10 @@ void GPUHandler::doJoin()
 
     // move candidates to another array, so the cpu can continue to
     // use the main candidates array
-    _chunkCandidates = new HostArray<unsigned int>(*_hostCandidates);
-    _hostCandidates = new HostArray<unsigned int>(_maxNumberOfCandidates, _numberOfRecords);
+    _chunkCandidates = new HostCandidates<unsigned int>(*_hostCandidates);
+    _hostCandidates = new HostCandidates<unsigned int>(_maxNumberOfCandidates, _numberOfRecords);
 
-    unsigned int numOfRecords = _chunkCandidates->getOffsetsSize() / 2;
+    unsigned int numOfRecords = _chunkCandidates->probes.size();
 
     // start the gpu join process
     _gpuThread = std::thread(&GPUHandler::invokeGPU, this, numOfRecords);
@@ -132,7 +132,7 @@ void GPUHandler::invokeGPU(unsigned int numOfRecords)
     if (_aggregate) {
         _deviceResults.init(_blocks);
     } else {
-        _deviceResults.init(_chunkCandidates->getArraySize());
+        _deviceResults.init(_chunkCandidates->candidates.size());
     }
 
     DeviceTiming::EventPair* joinTime = _deviceTimings.add("Conduct GPU join", 0);
@@ -146,7 +146,7 @@ void GPUHandler::invokeGPU(unsigned int numOfRecords)
                 _aggregate);
     } else if (_scenario == 2) {
         scenarioB <<<_blocks, _threads, _sharedMemory >>>(
-                 _deviceInputCollection,
+                _deviceInputCollection,
                  _binaryJoin ? _deviceForeignCollection : _deviceInputCollection,
                  _deviceCandidates,
                  _deviceResults,
@@ -164,41 +164,64 @@ void GPUHandler::invokeGPU(unsigned int numOfRecords)
                 _aggregate);
     }
 
-    gpuAssert( cudaPeekAtLastError() );
-
-    gpuAssert(cudaDeviceSynchronize());
-
     if (_aggregate) {
         thrust::device_ptr<unsigned int> thrustCount(_deviceResults.array);
         _result += thrust::reduce(thrust::device, thrustCount, thrustCount + _deviceResults.length);
         _deviceResults.free();
+    } else {
+        std::ofstream of;
+        std::ostream * os = &std::cout;
+        of.open(_outFile, std::ofstream::out);
+
+        os = &of;
+        HostArray<unsigned int> results;
+        results.init(_deviceResults);
+        for (unsigned int i = 0; i < _chunkCandidates->probes.size(); ++i){
+            unsigned int probeID = _chunkCandidates->probes[i];
+            unsigned int candidateStart = _chunkCandidates->starts[i];
+            unsigned int candidateEnd = candidateStart + _chunkCandidates->sizes[i];
+            for (unsigned int j = candidateStart; j < candidateEnd; ++j) {
+                if (results.array[j]) {
+                    *os << probeID << " " << _chunkCandidates->candidates[j] << std::endl;
+                }
+            }
+        }
+        of.close();
     }
 
-    gpuAssert(cudaDeviceSynchronize());
     _deviceTimings.finish(joinTime);
 
     this->freeCandidatesFromDevice();
-    _chunkCandidates->~HostArray();
+    _chunkCandidates->clear();
 }
 
-
-void GPUHandler::insertCandidate(unsigned int probe, unsigned int candidate)
+void GPUHandler::insertProbe(unsigned int probe)
 {
-    _hostCandidates->addElement(candidate);
+    _hostCandidates->probes.push_back(probe);
+    _hostCandidates->starts.push_back(_hostCandidates->sizes.size() > 0
+        ? _hostCandidates->starts[_hostCandidates->starts.size() - 1] + _hostCandidates->sizes[_hostCandidates->sizes.size() - 1]
+        : 0);
+    _candidateCounter = 0;
+}
+
+void GPUHandler::updateProbeNumberOfCandidates()
+{
+    _hostCandidates->sizes.push_back(_candidateCounter);
+}
+
+void GPUHandler::insertCandidate(unsigned int candidate)
+{
+    _hostCandidates->candidates.push_back(candidate);
+    _candidateCounter++;
 
     // we deal with any candidates which are not mapped to a probe record
     // in the doJoin function
     _numberOfCandidates++;
     if (_numberOfCandidates == _maxNumberOfCandidates) {
-        this->updateCandidateOffset(probe);
+        this->updateProbeNumberOfCandidates();
+        _candidateCounter = 0;
         this->doJoin();
     }
-}
-
-void GPUHandler::updateCandidateOffset(unsigned int probe)
-{
-    _hostCandidates->addOffset(probe);
-    _hostCandidates->addOffset(_hostCandidates->getArraySize());
 }
 
 void GPUHandler::updateMaxSetSize(unsigned int maxSetSize)
@@ -217,15 +240,9 @@ size_t GPUHandler::getResult()
     return _result;
 }
 
-float GPUHandler::getGPUJoinTime()
+float GPUHandler::getGPUTotalTime()
 {
-//    std::cout << _deviceTimings;
-    return _deviceTimings.sum("");
-}
-
-float GPUHandler::getGPUTransferTime()
-{
-    return _deviceTimings.sum("") + _deviceTimings.sum("") + _deviceTimings.sum("");
+    return _deviceTimings.total();
 }
 
 void GPUHandler::free()
