@@ -304,13 +304,7 @@ int main(int argc, char ** argv) {
 	algo->dojoin(handleoutput);
 	std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
 
-	std::cout
-            << scenario // scenario 1=> A, 2=> B, 3 => C
-            << ","  << inputfile // input
-            << ","  << algorithm // algo
-            << ","  << blockSize // blockSize
-            << ","  << threshold // threshold
-            << ","  << algo->getResult() // final count
+	std::cout << algo->getResult() // final count
             << ","  << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() /1000000.0 // overall join time
             << ","  << gpuHandler->getGPUTotalTime() / 1000.0f // gpu total time
             << std::endl;
